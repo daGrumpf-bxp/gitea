@@ -486,3 +486,34 @@ func TestUserSettingsBlockedUsers(t *testing.T) {
 
 	assertNavbar(t, doc)
 }
+
+func TestUserSettingsHiddenFeedRepos(t *testing.T) {
+	defer tests.PrepareTestEnv(t)()
+	testUserSettingsHiddenFeedRepos(t)
+}
+func testUserSettingsHiddenFeedRepos(t *testing.T) {
+	// user2 has one action in its private repo2
+	const repoLinkSelector = "#activity-feed a[href^='/user2/repo2/']"
+	session := loginUser(t, "user2")
+	doc := NewHTMLParser(t, session.MakeRequest(t, NewRequest(t, "GET", "/"), http.StatusOK).Body)
+	AssertHTMLElement(t, doc, repoLinkSelector, true)
+	hideURL, _ := doc.Find("#activity-feed button.link-action").Attr("data-url")
+	assert.Equal(t, "/user/settings/appearance/hidden_feed_repos?action=hide&repo_id=2", hideURL)
+
+	session.MakeRequest(t, NewRequest(t, "POST", hideURL), http.StatusOK)
+	doc = NewHTMLParser(t, session.MakeRequest(t, NewRequest(t, "GET", "/"), http.StatusOK).Body)
+	AssertHTMLElement(t, doc, repoLinkSelector, false)
+	AssertHTMLElement(t, doc, "a[href='/user/settings/appearance#hidden-feed-repos']", true)
+
+	doc = NewHTMLParser(t, session.MakeRequest(t, NewRequest(t, "GET", "/user/settings/appearance"), http.StatusOK).Body)
+	showURL, _ := doc.Find("#hidden-feed-repos + .segment button.link-action").Attr("data-url")
+	assert.Equal(t, "/user/settings/appearance/hidden_feed_repos?action=show&repo_id=2", showURL)
+
+	session.MakeRequest(t, NewRequest(t, "POST", showURL), http.StatusOK)
+	doc = NewHTMLParser(t, session.MakeRequest(t, NewRequest(t, "GET", "/"), http.StatusOK).Body)
+	AssertHTMLElement(t, doc, repoLinkSelector, true)
+
+	// a repository the user cannot read must not be hidden, as it would leak its name on the settings page
+	session = loginUser(t, "user4")
+	session.MakeRequest(t, NewRequest(t, "POST", hideURL), http.StatusNotFound)
+}
